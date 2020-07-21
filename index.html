@@ -61,75 +61,44 @@
         var createScene = function () {
             // scene init
             var scene = new BABYLON.Scene(engine);
-            scene.clearColor = BABYLON.Color3.Black();
+            scene.clearColor = BABYLON.Color3.White();
             var camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 2, 1.6, 7.6, new BABYLON.Vector3(0,1.5,0), scene);
             camera.minZ = 0.01;
             camera.allowUpsideDown = false;
             camera.wheelPrecision = 150;
+            camera.pinchDeltaPercentage = 0.0001;
+            camera.pinchPercision = 0.0001;
             camera.attachControl(canvas, true);
             var hdrTexture = new BABYLON.CubeTexture("textures/Studio_Softbox_2Umbrellas_cube_specular.env", scene);
             hdrTexture.gammaSpace = false;
             scene.environmentTexture = hdrTexture;
-            var shaderBall, shaderBallGLTFRoot;
-        
-            // cornell box
-            BABYLON.SceneLoader.ImportMesh(
-                "",
-                "https://models.babylonjs.com/CornellBox/",
-                "cornellBox.glb",
-                scene,
-                function () {
-                    // renaming the default gltf "__root__"
-                    scene.getMeshByName("bloc.000").parent.name = "__cornell-root__";
-                    // material tweaking
-                    scene.materials.forEach(function(material){
-                        material.environmentIntensity = 1.4;
-                    });
-                    scene.getMaterialByName("light.000").emissiveColor = BABYLON.Color3.White(); 
-                    var monkeyMtl = scene.getMaterialByName("suzanne.000");
-                    monkeyMtl.metallic = 0.64;
-                    monkeyMtl.roughness = 0.63;
-        
-                    // we have to cycles through objects to assign their lightmaps
-                    let lightmappedMeshes = ["bloc.000", "suzanne.000", "cornellBox.000"];
-                    lightmappedMeshes.forEach(function(mesh){
-                        let currentMesh = scene.getNodeByName(mesh);
-                        let currentMeshChildren = currentMesh.getChildren();
-                        // lightmap texture creation
-                        let currentLightmap = new BABYLON.Texture(
-                            "https://models.babylonjs.com/CornellBox/" + currentMesh.name + ".lightmap.jpg",
-                            scene,
-                            false,
-                            false);
-                        switch(currentMesh.getClassName()){
-                            case "Mesh":
-                                assignLightmapOnMaterial(currentMesh.material, currentLightmap);
-                                break;
-                            case "TransformNode": 
-                                currentMeshChildren.forEach(function(mesh){
-                                    assignLightmapOnMaterial(mesh.material, currentLightmap);
-                                });
-                                break;  
-                        }
-                    });
-        
-                    // all new meshes now receive shadows (shadowGenerator created below)
-                    scene.meshes.forEach(function(mesh){
-                        mesh.receiveShadows = true;
-                    });
-            });
+            var coupler, couplerGLTFRoot;
+            var couplerAnimationGroups;
+            var couplerCurrentStep = 0;
+
+            var dome = new BABYLON.PhotoDome(
+                "testdome",
+                "https://l13.alamy.com/360/PMXTA9/construction-site-of-a-new-hospital-in-hanoi-2-PMXTA9.jpg",
+                {
+                    resolution: 500,
+                    size: 1000,
+                    useDirectMapping: false
+                },
+                scene
+            );
+            dome.fovMultiplier = 0.7;
         
             // BJS logo /*
-            BABYLON.SceneLoader.ImportMesh("","https://charlie995.github.io/Model/","QC_attachSteps.glb",scene,(meshes, particleSystems, skeletons, animationGroups) => {
-                    // selecting the mesh we will animate later on scene.registerBeforeRender()
-                    shaderBall = meshes[0];
-                    // renaming the default gltf empty object "__root__" and adapting it to the scene
-                    shaderBallGLTFRoot = shaderBall;//.parent;
-                    shaderBallGLTFRoot.name = "__shaderBall-root__";
-                    shaderBallGLTFRoot.scaling.scaleInPlace(0.1);
-                    shaderBallGLTFRoot.position.y = 0.5;
-                    shaderBallGLTFRoot.rotationQuaternion = null; //this will help for the rotation anim later
-                    
+            BABYLON.SceneLoader.ImportMesh("","https://charlie995.github.io/Model/","12TTest05.glb",scene,(meshes, particleSystems, skeletons, animationGroups) => {
+            //BABYLON.SceneLoader.ImportMesh("","https://charlie995.github.io/Model/","QC_attachSteps.glb",scene,(meshes, particleSystems, skeletons, animationGroups) => {
+                    coupler = meshes[0];
+                    couplerGLTFRoot = coupler;//.parent;
+                    couplerGLTFRoot.name = "__shaderBall-root__";
+                    couplerGLTFRoot.scaling.scaleInPlace(0.9);
+                    couplerGLTFRoot.position.y = 0.5;
+                    couplerGLTFRoot.rotationQuaternion = null; //this will help for the rotation anim later
+                    couplerAnimationGroups = animationGroups;
+                    couplerAnimationGroups[couplerCurrentStep].speedRatio = 0.5;
                     // dyn light to generate shadows 
                     var light = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(0, -1, 0), scene);
                     light.position = new BABYLON.Vector3(0, 3, 0);
@@ -138,77 +107,135 @@
                     shadowGenerator.useBlurExponentialShadowMap = true;
                     meshes.forEach(function(mesh){
                         shadowGenerator.addShadowCaster(mesh);
-                    });
-                    //animationGroups[3].start(true);
-                    //animationGroups[0].stop();
-                    //animationGroups[1].start(true);
-                    //engine.hideLoadingUI();
-
-                    // UI
-                    var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
-                    var panel = new BABYLON.GUI.StackPanel();
-                    panel.isVertical = false;
-                    panel.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-                    advancedTexture.addControl(panel);
-
-                    var addButton = function (text, callback) {
-                         var button = BABYLON.GUI.Button.CreateSimpleButton("button", text);
-                         button.width = "140px";
-                         button.height = "40px";
-                         button.color = "white";
-                         button.background = "green";
-                         button.paddingLeft = "10px";
-                         button.paddingRight = "10px";
-                         button.onPointerUpObservable.add(function () {
-                              callback();
-                         });
-                         panel.addControl(button);
-                    }
-
-                    addButton("Play", function () {
-                         animationGroups[0].play(true);
-                    });
-
-                    addButton("Pause", function () {
-                         animationGroups[0].pause();
-                    });
-
-                    addButton("Stop", function () {
-                         animationGroups[0].reset();
-                         animationGroups[0].stop();
-                    });
-
+                    }); 
             });
-        
+
             // why not using glow?
             var glowLayer = new BABYLON.GlowLayer("glow", scene, {
                 mainTextureFixedSize: 256,
-                blurKernelSize: 32
+                blurKernelSize: 64
             });
-        
-            // simple animation for the logo
-            /*var time = 0; //this will be used as a time variable
-            scene.registerBeforeRender(function() {
-                time += 0.1;
-                if(shaderBallGLTFRoot != undefined){
-                    shaderBallGLTFRoot.rotation.x += 0.002;
-                    shaderBallGLTFRoot.rotation.y -= 0.003;
-                    shaderBallGLTFRoot.rotation.z -= 0.001;       
-                    shaderBallGLTFRoot.position.y = (Math.cos(time*0.1)*0.15) + 1.5;
+
+            glowLayer.intensity = 0.3;
+
+            // UI
+            var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+            var panel = new BABYLON.GUI.StackPanel();
+            panel.isVertical = false;
+            panel.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+            advancedTexture.addControl(panel);
+
+            var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+
+            var text1 = new BABYLON.GUI.TextBlock();
+            text1.text = "1. Curl in the coupler.";
+            text1.color = "black";
+            text1.fontSize = 24;
+            text1.top =  "40%";
+            text1.outlineColor = "white";
+            text1.outlineWidth = 2;
+            advancedTexture.addControl(text1);    
+
+            var updateText = function (step) {
+                if(step == 0){
+                    text1.text = "1. Curl in the coupler.";
+                }else if(step == 1){
+                    text1.text = "2. Press the power button followed by the control button.";
+                }else if(step == 2){
+                    text1.text = "3. Curl out the coupler";
+                }else if(step == 3){
+                    text1.text = "4. Attach the coupler to the bucket.";
+                }else if(step == 4){
+                    text1.text = "5. Curl in the coupler";
+                }else if(step == 5){
+                    text1.text = "6. Press the power button.";
+                }else if(step == 6){
+                    text1.text = "7. Perform a bump test.";
                 }
-            });*/
+            }
+
+            var addButton = function (text, callback) {
+                 var button = BABYLON.GUI.Button.CreateSimpleButton("button", text);
+                 button.width = "140px";
+                 button.height = "40px";
+                 button.color = "white";
+                 button.background = "green";
+                 button.paddingLeft = "10px";
+                 button.paddingRight = "10px";
+                 button.top =  "30%";
+                 button.onPointerUpObservable.add(function () {
+                      callback();
+                 });
+                 panel.addControl(button);
+            }
+
+            addButton("Back", function () {
+                couplerAnimationGroups[couplerCurrentStep].stop();
+                couplerAnimationGroups[couplerCurrentStep].reset();
+                if(couplerCurrentStep > 0){
+                    couplerCurrentStep--;
+                }
+                else {
+                    couplerCurrentStep = 0;
+                }
+                couplerAnimationGroups[couplerCurrentStep].reset();
+                couplerAnimationGroups[couplerCurrentStep].restart();
+                couplerAnimationGroups[couplerCurrentStep].play(true);
+                couplerAnimationGroups[couplerCurrentStep].speedRatio = 0.5;   
+                updateText(couplerCurrentStep);                  
+            });
+
+            //addButton("Pause", function () {
+            //    couplerAnimationGroups[couplerCurrentStep].pause();
+            //});
+
+            addButton("Next", function () {
+                if(couplerCurrentStep < 6){
+                    couplerCurrentStep++;
+                }
+                else{
+                    couplerCurrentStep = 6;
+                }
+                        
+                couplerAnimationGroups[couplerCurrentStep].restart();
+                couplerAnimationGroups[couplerCurrentStep].play(true);
+                couplerAnimationGroups[couplerCurrentStep].speedRatio = 0.5;
+                updateText(couplerCurrentStep); 
+            });
+            
+            var mat = new BABYLON.StandardMaterial("mat0", scene);
+            //mat.diffuseTexture = new BABYLON.Texture("/textures/dromone.png", scene);
+            mat.diffuseTexture = new BABYLON.Texture("https://charlie995.github.io/Model/dromone.png", scene);
+            mat.diffuseTexture.hasAlpha = true;
+            mat.emissiveColor = new BABYLON.Color3(2, 2, 2); 
+
+	        //Plane with texture
+	        var box = BABYLON.MeshBuilder.CreatePlane("plane0",{height: 0.55, width: 3.11}, scene);
+            box.material = mat;	
+            box.position = new BABYLON.Vector3(1.9, 2, 0);
+            box.rotate(BABYLON.Axis.Y, Math.PI / 2, BABYLON.Space.WORLD);
+
+            var box1 = BABYLON.MeshBuilder.CreatePlane("plane0",{height: 0.55, width: 3.11}, scene);
+            box1.material = mat;	
+            box1.position = new BABYLON.Vector3(-1.9, 2, 0);
+            box1.rotate(BABYLON.Axis.Y, -(Math.PI / 2), BABYLON.Space.WORLD);
+
+            //Light direction is up and left
+	        var light = new BABYLON.HemisphericLight("hemiLight", new BABYLON.Vector3(0, 1, 0), scene);
+            light.diffuse = new BABYLON.Color3(0.09, 0.05, 0.05);
 
             return scene;
         };
-var engine;
-try {
-    engine = createDefaultEngine();
-} catch(e) {
-    console.log("the available createEngine function failed. Creating the default engine instead");
-    engine = createDefaultEngine();
-}
+
+        var engine;
+        try {
+            engine = createDefaultEngine();
+        } catch(e) {
+            console.log("the available createEngine function failed. Creating the default engine instead");
+            engine = createDefaultEngine();
+        }
         if (!engine) throw 'engine should not be null.';
-        scene = createScene();;
+        scene = createScene();
         sceneToRender = scene
 
         engine.runRenderLoop(function () {
@@ -221,6 +248,7 @@ try {
         window.addEventListener("resize", function () {
             engine.resize();
         });
+
     </script>
 </body>
 </html>
